@@ -1,0 +1,10 @@
+{
+  "commands": [
+    {
+      "name": "Draw.io: サーバー起動",
+      "description": "cmux-drawio サーバーを起動する（ポートはOSが自動割り当て）",
+      "keywords": ["drawio", "draw", "diagram", "serve", "editor"],
+      "command": "cmux-drawio serve"
+    }
+  ]
+}

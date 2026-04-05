@@ -1,0 +1,37 @@
+{
+  "name": "cmux-drawio",
+  "version": "0.1.0",
+  "description": "cmuxのブラウザペインでdraw.ioファイルを編集するプラグイン",
+  "type": "module",
+  "bin": {
+    "cmux-drawio": "./dist/bin.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/bin.ts serve",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "build:client": "vite build",
+    "build:node": "tsup src/bin.ts --format esm --platform node --outDir dist --clean false",
+    "build": "pnpm run typecheck && pnpm run build:client && pnpm run build:node",
+    "start": "node dist/bin.js serve",
+    "lint": "biome check .",
+    "format": "biome format . --write",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.7.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@biomejs/biome", "esbuild"]
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.13.14",
+    "tsup": "^8.5.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.4",
+    "vitest": "^3.0.9"
+  }
+}
