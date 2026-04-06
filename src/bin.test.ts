@@ -1,8 +1,15 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildOpenUrl, parseArgs, readPortFile, writePortFile } from "./bin.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  buildOpenUrl,
+  isServerAlive,
+  parseArgs,
+  readPortFile,
+  waitForPortFile,
+  writePortFile,
+} from "./bin.js";
 
 // テスト用の一時ディレクトリ
 let tmpDir: string;
@@ -122,5 +129,107 @@ describe("writePortFile / readPortFile", () => {
 
     await writeFile(`${tmpDir}/.cmux-drawio-port`, "65536", "utf-8");
     expect(await readPortFile(tmpDir)).toBeNull();
+  });
+});
+
+// -----------------------------------------------------------------------
+// isServerAlive: サーバー死活確認のテスト
+// -----------------------------------------------------------------------
+describe("isServerAlive", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("ヘルスチェックエンドポイントが200を返すとき、trueを返す", async () => {
+    // 前提: fetchが正常なレスポンスを返す（サーバーが稼働中）
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
+
+    // 検証: trueが返ること
+    const result = await isServerAlive(3000);
+    expect(result).toBe(true);
+  });
+
+  it("ヘルスチェックエンドポイントが200以外を返すとき、falseを返す", async () => {
+    // 前提: fetchが500エラーを返す（サーバー異常）
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("Internal Server Error", { status: 500 }),
+    );
+
+    // 検証: falseが返ること
+    const result = await isServerAlive(3000);
+    expect(result).toBe(false);
+  });
+
+  it("ネットワークエラー（接続拒否）のとき、falseを返す", async () => {
+    // 前提: fetchがネットワークエラーをスロー（サーバーが起動していない）
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
+      new Error("fetch failed"),
+    );
+
+    // 検証: 例外を握りつぶしてfalseが返ること
+    const result = await isServerAlive(59999);
+    expect(result).toBe(false);
+  });
+
+  it("AbortErrorのとき、falseを返す", async () => {
+    // 前提: タイムアウトによりfetchがAbortErrorをスロー
+    const abortError = new DOMException("The operation was aborted", "AbortError");
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(abortError);
+
+    // 検証: タイムアウトでもfalseが返ること
+    const result = await isServerAlive(3000);
+    expect(result).toBe(false);
+  });
+
+  it("正しいヘルスチェックURLにリクエストを送る", async () => {
+    // 前提: 指定ポートのヘルスチェックエンドポイントにアクセスすること
+    const mockFetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+
+    await isServerAlive(8080);
+
+    // 検証: 正しいURLが呼ばれていること
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:8080/api/health",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+});
+
+// -----------------------------------------------------------------------
+// waitForPortFile: ポートファイル待機のテスト
+// -----------------------------------------------------------------------
+describe("waitForPortFile", () => {
+  it("ポートファイルが既に存在するとき、すぐにポート番号を返す", async () => {
+    // 前提: 起動済みサーバーのポートファイルが存在する
+    await writePortFile(tmpDir, 3000);
+
+    // 検証: 即座にポート番号が返ること
+    const port = await waitForPortFile(tmpDir, { timeoutMs: 1000 });
+    expect(port).toBe(3000);
+  });
+
+  it("ポートファイルが遅延して作成されたとき、待機してポート番号を返す", async () => {
+    // 前提: 200ms後にポートファイルが書き込まれる（サーバー起動中）
+    setTimeout(() => writePortFile(tmpDir, 4000), 200);
+
+    // 検証: 最大2000ms待機してポート番号が返ること
+    const port = await waitForPortFile(tmpDir, {
+      intervalMs: 50,
+      timeoutMs: 2000,
+    });
+    expect(port).toBe(4000);
+  });
+
+  it("タイムアウト時間内にポートファイルが作成されなかったとき、エラーをスローする", async () => {
+    // 前提: サーバー起動に失敗してポートファイルが書き込まれない
+    await expect(
+      waitForPortFile(tmpDir, { intervalMs: 50, timeoutMs: 200 }),
+    ).rejects.toThrow();
   });
 });

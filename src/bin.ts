@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ポートファイル名
 const PORT_FILE = ".cmux-drawio-port";
@@ -80,6 +81,48 @@ export async function readPortFile(dir: string): Promise<number | null> {
   }
 }
 
+/**
+ * ローカルサーバーのヘルスチェックエンドポイントにリクエストを送り、稼働中かどうかを返す。
+ * ネットワークエラーやタイムアウトの場合は false を返す。
+ */
+export async function isServerAlive(port: number): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * ポートファイルが書き込まれるまでポーリングし、ポート番号を返す。
+ * タイムアウト時間内に書き込まれなかった場合はエラーをスローする。
+ */
+export async function waitForPortFile(
+  dir: string,
+  options?: { intervalMs?: number; timeoutMs?: number },
+): Promise<number> {
+  const intervalMs = options?.intervalMs ?? 200;
+  const timeoutMs = options?.timeoutMs ?? 10000;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const port = await readPortFile(dir);
+    if (port !== null) return port;
+    await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error(
+    `サーバーの起動を ${timeoutMs}ms 待機しましたが、タイムアウトしました。`,
+  );
+}
+
 // -----------------------------------------------------------------------
 // メイン処理（テスト対象外）
 // -----------------------------------------------------------------------
@@ -89,8 +132,7 @@ async function main(): Promise<void> {
   if (args.command === "serve") {
     // dist/client が存在しない場合は起動前に早期失敗
     const clientIndex = path.join(
-      process.cwd(),
-      "dist",
+      path.dirname(fileURLToPath(import.meta.url)),
       "client",
       "index.html",
     );
@@ -127,13 +169,51 @@ async function main(): Promise<void> {
   }
 
   if (args.command === "open") {
-    const port = await readPortFile(process.cwd());
-    if (port === null) {
-      process.stderr.write(
-        "サーバーが起動していません。先に cmux-drawio serve を実行してください。\n",
-      );
-      process.exit(1);
+    let port = await readPortFile(process.cwd());
+
+    // ポートファイルが存在してもサーバーが死んでいる場合は再起動する
+    if (port !== null && !(await isServerAlive(port))) {
+      port = null;
     }
+
+    if (port === null) {
+      // 古いポートファイルを削除してから新しいサーバーを起動する
+      try {
+        await unlink(path.join(process.cwd(), PORT_FILE));
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+
+      const { spawn } = await import("node:child_process");
+      const binPath = fileURLToPath(import.meta.url);
+      const child = spawn(process.execPath, [binPath, "serve"], {
+        detached: true,
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+
+      // 子プロセスの異常終了をキャッチしてポートファイル待機と競合させる
+      const childFailed = new Promise<never>((_, reject) => {
+        child.on("exit", (code) => {
+          if (code !== 0) {
+            reject(
+              new Error(
+                `サーバーの起動に失敗しました（終了コード: ${code}）。pnpm build を実行してから再試行してください。`,
+              ),
+            );
+          }
+        });
+        child.stderr?.on("data", (data: Buffer) => {
+          process.stderr.write(data);
+        });
+      });
+      child.unref();
+
+      port = await Promise.race([
+        waitForPortFile(process.cwd(), { timeoutMs: 10000 }),
+        childFailed,
+      ]);
+    }
+
     const url = buildOpenUrl(port, args.filePath);
     execFileSync("cmux", ["browser", "open-split", url], { stdio: "inherit" });
     return;
@@ -154,7 +234,7 @@ async function main(): Promise<void> {
 // エントリポイントとして直接実行された場合のみ main() を呼び出す
 if (
   process.argv[1] !== undefined &&
-  path.resolve(process.argv[1]) === path.resolve(import.meta.url.slice(7))
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   main().catch((err) => {
     process.stderr.write(

@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 
@@ -120,4 +121,5 @@ app.post("/api/file", async (c) => {
 });
 
 // 静的ファイル配信（dist/client/ → /）
-app.use("/*", serveStatic({ root: "./dist/client" }));
+const clientDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "client");
+app.use("/*", serveStatic({ root: clientDir }));
