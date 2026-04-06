@@ -2,3 +2,5 @@ node_modules/
 dist/
 .DS_Store
 /tmp/cmux-drawio.port
+.cmux-drawio-port
+.claude/plans/
