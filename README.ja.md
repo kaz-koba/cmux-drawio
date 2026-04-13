@@ -2,17 +2,17 @@
 
 # cmux-drawio
 
-Plugin for editing `.drawio` files inside the [cmux](https://cmux.com/ja) browser pane.
+[cmux](https://cmux.com/ja) のブラウザペインで `.drawio` ファイルを編集するプラグインです。
 
-It embeds [draw.io](https://www.drawio.com/) in embed mode inside an iframe, while a local Node.js server handles file I/O.
+[draw.io](https://www.drawio.com/) の embed mode を iframe で埋め込み、ローカル Node.js サーバーがファイル I/O を仲介します。
 
 ## Overview
 
-`cmux-drawio` opens a draw.io editor in a cmux browser pane and saves changes back to a local `.drawio` file.
+`cmux-drawio` は、cmux のブラウザペインで draw.io エディタを開き、編集結果をローカルの `.drawio` ファイルへ保存します。
 
-- CLI starts or reuses the local server and opens the target file in cmux.
-- The client page hosts the draw.io iframe and communicates via `postMessage`.
-- The server reads and writes `.drawio` files through local HTTP APIs.
+- CLI がローカルサーバーを起動または再利用し、対象ファイルを cmux で開きます。
+- クライアントページが draw.io iframe をホストし、`postMessage` で通信します。
+- サーバーがローカル HTTP API 経由で `.drawio` ファイルを読み書きします。
 
 ## Setup
 
@@ -23,21 +23,21 @@ pnpm build
 
 ## Usage
 
-### Open a file
+### ファイルを開く
 
 ```bash
 cmux-drawio open <file.drawio>
 ```
 
-Opens the specified `.drawio` file in the cmux browser pane. If the server is not running, it starts automatically in the background.
+指定した `.drawio` ファイルを cmux のブラウザペインで開きます。サーバーが未起動の場合は、自動でバックグラウンド起動します。
 
-### Start the server manually
+### サーバーを手動起動する
 
 ```bash
 cmux-drawio serve
 ```
 
-Starts the local server explicitly. You can also run it from the cmux command palette as `Draw.io: サーバー起動`.
+ローカルサーバーを明示的に起動します。cmux のコマンドパレットから `Draw.io: サーバー起動` を実行しても起動できます。
 
 ## Architecture
 
@@ -45,9 +45,9 @@ Starts the local server explicitly. You can also run it from the cmux command pa
 ┌────────────────────────────────────────────────────────┐
 │ cmux                                                   │
 │  ┌──────────────┐   ┌───────────────────────────────┐  │
-│  │ Terminal     │   │ Browser pane                  │  │
+│  │ ターミナル   │   │ ブラウザペイン                │  │
 │  │              │   │  ┌─────────────────────────┐  │  │
-│  │ $ cmux-drawio│   │  │ Client                  │  │  │
+│  │ $ cmux-drawio│   │  │ クライアント            │  │  │
 │  │   open foo.  │   │  │  ┌───────────────────┐  │  │  │
 │  │   drawio     │──▶│  │  │ draw.io iframe    │  │  │  │
 │  │              │   │  │  │ (embed mode)      │  │  │  │
@@ -56,32 +56,32 @@ Starts the local server explicitly. You can also run it from the cmux command pa
 │  └──────────────┘   └────────────┼──────────────────┘  │
 │                                  │ HTTP API             │
 │                        ┌─────────▼─────────┐           │
-│                        │ Local server      │           │
+│                        │ ローカルサーバー   │           │
 │                        │ (Hono on Node.js) │           │
 │                        └─────────┬─────────┘           │
-│                                  │ File I/O             │
+│                                  │ ファイル I/O         │
 │                           ┌──────▼──────┐              │
 │                           │ .drawio     │              │
-│                           │ file        │              │
+│                           │ ファイル    │              │
 │                           └─────────────┘              │
 └────────────────────────────────────────────────────────┘
 ```
 
 ### Components
 
-| Component | File | Responsibility |
+| コンポーネント | ファイル | 役割 |
 | --- | --- | --- |
-| CLI | `src/bin.ts` | Provides the `serve` and `open` subcommands |
-| Server | `src/server.ts` | Serves static assets and provides read/write APIs for `.drawio` files |
-| Client | `src/client/` | Hosts the draw.io iframe and communicates through the `postMessage` API |
+| CLI | `src/bin.ts` | `serve` と `open` サブコマンドを提供します。 |
+| Server | `src/server.ts` | `.drawio` ファイルの読み書き API と静的ファイル配信を担当します。 |
+| Client | `src/client/` | draw.io iframe をホストし、`postMessage` API で通信します。 |
 
 ### Data Flow
 
-1. `cmux-drawio open <file>` checks whether the server is running and starts it in the background if needed.
-2. The file path is encoded into a URL query parameter, and cmux opens it with `cmux browser open-split`.
-3. The client fetches the XML via `GET /api/file?path=...`.
-4. The client loads the XML into the draw.io iframe via `postMessage`.
-5. When the user saves, the client writes the updated XML back to disk via `POST /api/file`.
+1. `cmux-drawio open <file>` でサーバー稼働を確認し、未起動ならバックグラウンド起動します。
+2. ファイルパスを URL クエリパラメータに変換し、`cmux browser open-split` でブラウザペインを開きます。
+3. クライアントが `GET /api/file?path=...` で XML を取得します。
+4. draw.io iframe に `postMessage` で XML をロードします。
+5. ユーザーが保存すると、`POST /api/file` で更新後の XML をディスクへ書き込みます。
 
 ## Development
 
